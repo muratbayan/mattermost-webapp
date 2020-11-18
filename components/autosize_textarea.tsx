@@ -14,44 +14,49 @@ type Props = {
     placeholder?: string;
 }
 
-export default class AutosizeTextarea extends React.Component<Props> {
+export default class AutosizeTextarea extends React.PureComponent<Props> {
     private height: number;
+    private textAreaRef: React.RefObject<HTMLTextAreaElement>;
+    private referenceRef: React.RefObject<HTMLTextAreaElement>;
     constructor(props: Props) {
         super(props);
 
         this.height = 0;
+
+        this.textAreaRef = React.createRef();
+        this.referenceRef = React.createRef();
     }
 
     get value() {
-        return (this.refs.textarea as HTMLTextAreaElement).value;
+        return (this.textAreaRef.current as HTMLTextAreaElement).value;
     }
 
-    set value(value) {
-        (this.refs.textarea as HTMLTextAreaElement).value = value;
+    set value(value: string) {
+        (this.textAreaRef.current as HTMLTextAreaElement).value = value;
     }
 
     get selectionStart() {
-        return (this.refs.textarea as HTMLTextAreaElement).selectionStart;
+        return (this.textAreaRef.current as HTMLTextAreaElement).selectionStart;
     }
 
     set selectionStart(selectionStart) {
-        (this.refs.textarea as HTMLTextAreaElement).selectionStart = selectionStart;
+        (this.textAreaRef.current as HTMLTextAreaElement).selectionStart = selectionStart;
     }
 
     get selectionEnd() {
-        return (this.refs.textarea as HTMLTextAreaElement).selectionEnd;
+        return (this.textAreaRef.current as HTMLTextAreaElement).selectionEnd;
     }
 
     set selectionEnd(selectionEnd) {
-        (this.refs.textarea as HTMLTextAreaElement).selectionEnd = selectionEnd;
+        (this.textAreaRef.current as HTMLTextAreaElement).selectionEnd = selectionEnd;
     }
 
     focus() {
-        (this.refs.textarea as HTMLTextAreaElement).focus();
+        this.textAreaRef.current?.focus();
     }
 
     blur() {
-        (this.refs.textarea as HTMLTextAreaElement).blur();
+        this.textAreaRef.current?.blur();
     }
 
     componentDidMount() {
@@ -63,12 +68,12 @@ export default class AutosizeTextarea extends React.Component<Props> {
     }
 
     recalculateSize = () => {
-        if (!this.refs.reference || !(this.refs.textarea as HTMLTextAreaElement)) {
+        if (!this.referenceRef.current || !(this.textAreaRef.current)) {
             return;
         }
 
-        const height = (this.refs.reference as HTMLTextAreaElement).scrollHeight;
-        const textarea = (this.refs.textarea as HTMLTextAreaElement);
+        const height = (this.referenceRef.current).scrollHeight;
+        const textarea = (this.textAreaRef.current);
 
         if (height > 0 && height !== this.height) {
             const style = getComputedStyle(textarea);
@@ -79,14 +84,14 @@ export default class AutosizeTextarea extends React.Component<Props> {
 
             this.height = height;
 
-            if (this.props.onHeightChange) {
-                this.props.onHeightChange(height, parseInt(style.maxHeight || '0', 10));
-            }
+            window.requestAnimationFrame(() => {
+                this.props.onHeightChange?.(height, parseInt(style.maxHeight || '0', 10));
+            });
         }
-    };
+    }
 
     getDOMNode = () => {
-        return (this.refs.textarea as HTMLTextAreaElement);
+        return (this.textAreaRef.current);
     };
 
     handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -119,7 +124,7 @@ export default class AutosizeTextarea extends React.Component<Props> {
 
         const heightProps = {
             rows: 0,
-            height: 0
+            height: 0,
         };
 
         if (this.height <= 0) {
@@ -135,6 +140,7 @@ export default class AutosizeTextarea extends React.Component<Props> {
             textareaPlaceholder = (
                 <div
                     {...otherProps as any}
+                    data-testid={`${id}_placeholder`}
                     style={style.placeholder}
                 >
                     {placeholder}
@@ -146,7 +152,8 @@ export default class AutosizeTextarea extends React.Component<Props> {
             <div>
                 {textareaPlaceholder}
                 <textarea
-                    ref='textarea'
+                    ref={this.textAreaRef}
+                    data-testid={id}
                     id={id}
                     {...heightProps}
                     {...otherProps}
@@ -160,7 +167,7 @@ export default class AutosizeTextarea extends React.Component<Props> {
                 />
                 <div style={style.container}>
                     <textarea
-                        ref='reference'
+                        ref={this.referenceRef}
                         id={id + '-reference'}
                         style={style.reference}
                         disabled={true}
@@ -178,5 +185,5 @@ export default class AutosizeTextarea extends React.Component<Props> {
 const style: { [Key: string]: CSSProperties} = {
     container: {height: 0, overflow: 'hidden'},
     reference: {height: 'auto', width: '100%'},
-    placeholder: {overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.5, pointerEvents: 'none', position: 'absolute', whiteSpace: 'nowrap', background: 'none'},
+    placeholder: {overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.5, pointerEvents: 'none', position: 'absolute', whiteSpace: 'nowrap', background: 'none', borderColor: 'transparent'},
 };

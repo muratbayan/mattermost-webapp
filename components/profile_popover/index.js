@@ -18,7 +18,7 @@ import {
 
 import {openDirectChannelToUserId} from 'actions/channel_actions.jsx';
 import {getMembershipForCurrentEntities} from 'actions/views/profile_popover';
-import {openModal} from 'actions/views/modals';
+import {closeModal, openModal} from 'actions/views/modals';
 
 import {areTimezonesEnabledAndSupported} from 'selectors/general';
 import {getSelectedPost, getRhsState} from 'selectors/rhs';
@@ -36,10 +36,9 @@ function mapStateToProps(state, ownProps) {
     }
 
     const selectedPost = getSelectedPost(state);
-    const currentChannel = getCurrentChannel(state);
-
     let channelId;
     if (selectedPost.exists === false) {
+        const currentChannel = getCurrentChannel(state) || {};
         channelId = currentChannel.id;
     } else {
         channelId = selectedPost.channel_id;
@@ -63,12 +62,14 @@ function mapStateToProps(state, ownProps) {
         status: getStatusForUserId(state, userId),
         teamUrl: getCurrentRelativeTeamUrl(state),
         user: getUser(state, userId),
+        modals: state.views.modals.modalState,
     };
 }
 
 function mapDispatchToProps(dispatch) {
     return {
         actions: bindActionCreators({
+            closeModal,
             openDirectChannelToUserId,
             openModal,
             getMembershipForCurrentEntities,

@@ -7,10 +7,10 @@ import PopoverBar from 'components/view_image/popover_bar/popover_bar.jsx';
 
 describe('components/view_image/popover_bar/PopoverBar', () => {
     const defaultProps = {
-        isDesktopApp: true,
         enablePublicLink: false,
         canDownloadFiles: true,
         isExternalFile: false,
+        showZoomControls: false,
     };
 
     test('should match snapshot with public links disabled', () => {
@@ -53,55 +53,38 @@ describe('components/view_image/popover_bar/PopoverBar', () => {
             isExternalFile: false,
             fileUrl: 'http://example.com/img.png',
             filename: 'img.png',
-            isDesktopApp: true,
         };
 
-        test('when externally hosted', () => {
+        test('should not add download attribute when externally hosted', () => {
             const wrapper = shallow(
                 <PopoverBar
                     {...props}
                     isExternalFile={true}
-                    isDesktopApp={false}
-                />
+                />,
             );
 
-            expect(wrapper).toMatchSnapshot();
+            expect(wrapper.find('a').prop('download')).toBeUndefined();
         });
 
-        test('when externally hosted and on the desktop app', () => {
-            const wrapper = shallow(
-                <PopoverBar
-                    {...props}
-                    isExternalFile={true}
-                    isDesktopApp={true}
-                />
-            );
-
-            expect(wrapper).toMatchSnapshot();
-        });
-
-        test('when internally hosted', () => {
+        test('should add download attribute when internally hosted', () => {
             const wrapper = shallow(
                 <PopoverBar
                     {...props}
                     isExternalFile={false}
-                    isDesktopApp={false}
-                />
+                />,
             );
 
-            expect(wrapper).toMatchSnapshot();
+            expect(wrapper.find('a').prop('download')).toBe(props.filename);
         });
+    });
 
-        test('when internally hosted and on the desktop app', () => {
-            const wrapper = shallow(
-                <PopoverBar
-                    {...props}
-                    isExternalFile={false}
-                    isDesktopApp={true}
-                />
-            );
+    test('should match snapshot with zoom controls enabled', () => {
+        const props = {
+            ...defaultProps,
+            showZoomControls: true,
+        };
 
-            expect(wrapper).toMatchSnapshot();
-        });
+        const wrapper = shallow(<PopoverBar {...props}/>);
+        expect(wrapper).toMatchSnapshot();
     });
 });

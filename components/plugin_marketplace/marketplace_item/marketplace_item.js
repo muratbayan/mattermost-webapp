@@ -4,14 +4,16 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import classNames from 'classnames';
-import {Tooltip, OverlayTrigger} from 'react-bootstrap';
+import {Tooltip} from 'react-bootstrap';
 import semver from 'semver';
 
-import {FormattedMessage, FormattedHTMLMessage} from 'react-intl';
+import {FormattedMessage} from 'react-intl';
 
 import {Link} from 'react-router-dom';
 
-import ConfirmModal from 'components/confirm_modal.jsx';
+import FormattedMarkdownMessage from 'components/formatted_markdown_message';
+import ConfirmModal from 'components/confirm_modal';
+import OverlayTrigger from 'components/overlay_trigger';
 import LoadingWrapper from 'components/widgets/loading/loading_wrapper.tsx';
 import PluginIcon from 'components/widgets/icons/plugin_icon.jsx';
 
@@ -38,6 +40,61 @@ export const UpdateVersion = ({version, releaseNotesUrl}) => {
 UpdateVersion.propTypes = {
     version: PropTypes.string.isRequired,
     releaseNotesUrl: PropTypes.string,
+};
+
+// Label renders a tag showing a name and a description in a tooltip.
+// If a URL is provided, clicking on the tag will open the URL in a new tab.
+export const Label = ({name, description, url, color}) => {
+    const tag = (
+        <span
+            className='tag'
+            style={{backgroundColor: color || ''}}
+        >
+            {name.toUpperCase()}
+        </span>
+    );
+
+    let label;
+    if (description) {
+        label = (
+            <OverlayTrigger
+                delayShow={Constants.OVERLAY_TIME_DELAY}
+                placement='top'
+                overlay={
+                    <Tooltip id={'plugin-marketplace_label_' + name.toLowerCase() + '-tooltip'}>
+                        {description}
+                    </Tooltip>
+                }
+            >
+                {tag}
+            </OverlayTrigger>
+        );
+    } else {
+        label = tag;
+    }
+
+    if (url) {
+        return (
+            <a
+                aria-label={name.toLowerCase()}
+                className='style--none more-modal__row--link'
+                target='_blank'
+                rel='noopener noreferrer'
+                href={url}
+            >
+                {label}
+            </a>
+        );
+    }
+
+    return label;
+};
+
+Label.propTypes = {
+    name: PropTypes.string.isRequired,
+    description: PropTypes.string,
+    url: PropTypes.string,
+    color: PropTypes.string,
 };
 
 // UpdateDetails renders an inline update prompt for plugins, when available.
@@ -119,12 +176,12 @@ export const UpdateConfirmationModal = ({show, name, version, installedVersion, 
     if (releaseNotesUrl) {
         messages.push(
             <p key='current'>
-                <FormattedHTMLMessage
+                <FormattedMarkdownMessage
                     id='marketplace_modal.list.update_confirmation.message.current_with_release_notes'
-                    defaultMessage={`You currently have ${installedVersion} installed. View the <a href="${releaseNotesUrl}" target='_blank' rel='noopener noreferrer'>release notes</a> to learn about the changes included in this update.`}
+                    defaultMessage='You currently have {installedVersion} installed. View the [release notes](!{releaseNotesUrl}) to learn about the changes included in this update.'
                     values={{installedVersion, releaseNotesUrl}}
                 />
-            </p>
+            </p>,
         );
     } else {
         messages.push(
@@ -134,7 +191,7 @@ export const UpdateConfirmationModal = ({show, name, version, installedVersion, 
                     defaultMessage={`You currently have ${installedVersion} installed.`}
                     values={{installedVersion}}
                 />
-            </p>
+            </p>,
         );
     }
 
@@ -153,12 +210,12 @@ export const UpdateConfirmationModal = ({show, name, version, installedVersion, 
                     className='alert alert-warning'
                     key='warning'
                 >
-                    <FormattedHTMLMessage
+                    <FormattedMarkdownMessage
                         id='marketplace_modal.list.update_confirmation.message.warning_major_version_with_release_notes'
-                        defaultMessage={`This update may contain breaking changes. Consult the <a href="${releaseNotesUrl}" target='_blank' rel='noopener noreferrer'>release notes</a> before upgrading.`}
+                        defaultMessage='This update may contain breaking changes. Consult the [release notes](!{releaseNotesUrl}) before upgrading.'
                         values={{releaseNotesUrl}}
                     />
-                </p>
+                </p>,
             );
         } else {
             messages.push(
@@ -170,7 +227,7 @@ export const UpdateConfirmationModal = ({show, name, version, installedVersion, 
                         id='marketplace_modal.list.update_confirmation.message.warning_major_version'
                         defaultMessage={'This update may contain breaking changes.'}
                     />
-                </p>
+                </p>,
             );
         }
     }
@@ -207,15 +264,15 @@ UpdateConfirmationModal.propTypes = {
     onCancel: PropTypes.func.isRequired,
 };
 
-export default class MarketplaceItem extends React.Component {
+export default class MarketplaceItem extends React.PureComponent {
     static propTypes = {
         id: PropTypes.string.isRequired,
         name: PropTypes.string.isRequired,
         description: PropTypes.string.isRequired,
         version: PropTypes.string.isRequired,
-        downloadUrl: PropTypes.string,
         homepageUrl: PropTypes.string,
         releaseNotesUrl: PropTypes.string,
+        labels: PropTypes.array,
         iconData: PropTypes.string,
         installedVersion: PropTypes.string.isRequired,
         installing: PropTypes.bool.isRequired,
@@ -294,7 +351,7 @@ export default class MarketplaceItem extends React.Component {
             <button
                 onClick={this.onInstall}
                 className='btn btn-primary'
-                disabled={this.props.installing || this.props.downloadUrl === ''}
+                disabled={this.props.installing}
             >
                 <LoadingWrapper
                     loading={this.props.installing}
@@ -328,7 +385,6 @@ export default class MarketplaceItem extends React.Component {
     }
 
     render() {
-        const ariaLabel = `${this.props.name}, ${this.props.description}`.toLowerCase();
         let versionLabel = `(${this.props.version})`;
         if (this.props.installedVersion !== '') {
             versionLabel = `(${this.props.installedVersion})`;
@@ -345,64 +401,75 @@ export default class MarketplaceItem extends React.Component {
             pluginIcon = <PluginIcon className='icon__plugin icon__plugin--background'/>;
         }
 
-        let localTag;
-        if (!this.props.downloadUrl) {
-            const localTooltip = (
-                <Tooltip id='plugin-marketplace__local-tooltop'>
-                    <FormattedMessage
-                        id='marketplace_modal.list.local.tooltip'
-                        defaultMessage='This plugin is not listed in the marketplace but was installed manually.'
-                    />
-                </Tooltip>
-            );
-
-            localTag = (
-                <OverlayTrigger
-                    delayShow={Constants.OVERLAY_TIME_DELAY}
-                    placement='top'
-                    overlay={localTooltip}
-                >
-                    <span className='tag'>
-                        <FormattedMessage
-                            id='marketplace_modal.list.local'
-                            defaultMessage='LOCAL'
-                        />
-                    </span>
-                </OverlayTrigger>
+        let labels;
+        if (this.props.labels && this.props.labels.length !== 0) {
+            labels = this.props.labels.map((label) => (
+                <Label
+                    key={label.name}
+                    name={label.name}
+                    description={label.description}
+                    url={label.url}
+                    color={label.color}
+                />
+            ),
             );
         }
 
         const pluginDetailsInner = (
             <>
-                {this.props.name} <span className='light subtitle'>{versionLabel}</span>
-                {localTag}
-                <p className={classNames('more-modal__description', {error_text: this.props.error})}>
-                    {this.props.error ? this.props.error : this.props.description}
-                </p>
+                {this.props.name}
+                <span className='light subtitle'>{versionLabel}</span>
             </>
+        );
+
+        const description = (
+            <p className={classNames('more-modal__description', {error_text: this.props.error})}>
+                {this.props.error ? this.props.error : this.props.description}
+            </p>
         );
 
         let pluginDetails;
         if (this.props.homepageUrl) {
             pluginDetails = (
-                <a
-                    aria-label={ariaLabel}
-                    className='style--none more-modal__row--link'
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    href={this.props.homepageUrl}
-                >
-                    {pluginDetailsInner}
-                </a>
+                <>
+                    <a
+                        aria-label={this.props.name.toLowerCase()}
+                        className='style--none more-modal__row--link'
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        href={this.props.homepageUrl}
+                    >
+                        {pluginDetailsInner}
+                    </a>
+                    {labels}
+                    <a
+                        aria-label={this.props.description.toLowerCase()}
+                        className='style--none more-modal__row--link'
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        href={this.props.homepageUrl}
+                    >
+                        {description}
+                    </a>
+                </>
             );
         } else {
             pluginDetails = (
-                <span
-                    aria-label={ariaLabel}
-                    className='style--none'
-                >
-                    {pluginDetailsInner}
-                </span>
+                <>
+                    <span
+                        aria-label={this.props.name.toLowerCase()}
+                        className='style--none'
+                    >
+                        {pluginDetailsInner}
+                    </span>
+                    {labels}
+                    <span
+                        aria-label={this.props.description.toLowerCase()}
+                        className='style--none'
+                    >
+                        {description}
+                    </span>
+                </>
             );
         }
 

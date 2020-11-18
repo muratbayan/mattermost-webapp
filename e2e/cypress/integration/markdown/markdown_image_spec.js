@@ -7,8 +7,11 @@
 // - Use element ID when selecting an element. Create one if none.
 // ***************************************************************
 
+// Group: @markdown
+
 describe('Markdown', () => {
     before(() => {
+        // # Update config
         cy.apiUpdateConfig({
             ImageProxySettings: {
                 Enable: true,
@@ -16,12 +19,9 @@ describe('Markdown', () => {
             },
         });
 
-        // # Login as new user
-        cy.loginAsNewUser().then(() => {
-            // # Create new team and visit its URL
-            cy.apiCreateTeam('test-team', 'Test Team').then((response) => {
-                cy.visit(`/${response.body.name}`);
-            });
+        // # Login as new user, create new team and visit its URL
+        cy.apiInitSetup({loginAfter: true}).then(({team}) => {
+            cy.visit(`/${team.name}/channels/town-square`);
         });
     });
 
@@ -46,7 +46,7 @@ describe('Markdown', () => {
                 and((inlineImg) => {
                     expect(inlineImg.height()).to.be.closeTo(20, 0.9);
                 }).
-                and('have.css', 'width', '97px');
+                and('have.css', 'width', '98px');
         });
     });
 
@@ -68,8 +68,8 @@ describe('Markdown', () => {
                 and('have.class', 'a11y--active').
                 and('have.attr', 'alt', 'Github').
                 and('have.attr', 'src', `${baseUrl}/api/v4/image?url=https%3A%2F%2Fgithub.githubassets.com%2Ffavicon.ico`).
-                and('have.css', 'height', '33px').
-                and('have.css', 'width', '33px');
+                and('have.css', 'height', '34px').
+                and('have.css', 'width', '34px');
         });
     });
 
@@ -84,14 +84,14 @@ describe('Markdown', () => {
             cy.get(`#postMessageText_${postId}`).should('be.visible').within(() => {
                 cy.get('.markdown-inline-img').should('be.visible').
                     and((inlineImg) => {
-                        expect(inlineImg.height()).to.be.closeTo(143, 2);
-                        expect(inlineImg.width()).to.be.closeTo(893, 2);
+                        expect(inlineImg.height()).to.be.closeTo(153, 2);
+                        expect(inlineImg.width()).to.be.closeTo(971, 2);
                     }).
                     click();
             });
 
             // * Verify that the preview modal opens
-            cy.get('div.modal-image__content').should('be.visible');
+            cy.get('div.modal-image__content').should('be.visible').trigger('mouseover');
 
             // # Close the modal
             cy.get('div.modal-close').should('exist').click({force: true});
@@ -108,13 +108,13 @@ describe('Markdown', () => {
             // # Get the image and simulate a click.
             cy.get(`#postMessageText_${postId}`).should('be.visible').within(() => {
                 cy.get('.markdown-inline-img').should('be.visible').
-                    should('have.css', 'height', '33px').
-                    and('have.css', 'width', '33px').
+                    should('have.css', 'height', '34px').
+                    and('have.css', 'width', '34px').
                     click();
             });
 
             // * Verify that the preview modal opens
-            cy.get('div.file-details__container').should('be.visible');
+            cy.get('div.file-details__container').should('be.visible').trigger('mouseover');
 
             // # Close the modal
             cy.get('div.modal-close').should('exist').click({force: true});

@@ -50,11 +50,9 @@ function makeMapStateToProps() {
 
         const teamMemberships = getTeamMemberships(state);
         const channelLoading = isChannelLoading(ownProps.match.params, channel, team, teammate, teamMemberships);
-
         return {
             lastViewedAt,
             channelLoading,
-            channel,
         };
     };
 }

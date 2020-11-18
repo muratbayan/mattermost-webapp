@@ -4,20 +4,23 @@
 import React from 'react';
 import {Overlay, Tooltip} from 'react-bootstrap';
 
+import {AdminConfig, EnvironmentConfig} from 'mattermost-redux/types/config';
+
 import {localizeMessage} from 'utils/utils.jsx';
 import SaveButton from 'components/save_button';
 import FormError from 'components/form_error';
 
 import AdminHeader from 'components/widgets/admin_console/admin_header';
 
-type Props = {
-    config?: object;
-    environmentConfig?: object;
+export type BaseProps = {
+    config?: DeepPartial<AdminConfig>;
+    environmentConfig?: EnvironmentConfig;
     setNavigationBlocked?: (blocked: boolean) => void;
-    updateConfig?: (config: object) => {data: object; error: ClientErrorPlaceholder};
+    isDisabled?: boolean;
+    updateConfig?: (config: AdminConfig) => {data: AdminConfig; error: ClientErrorPlaceholder};
 }
 
-type State = {
+export type BaseState = {
     saveNeeded: boolean;
     saving: boolean;
     serverError: string|null;
@@ -25,7 +28,7 @@ type State = {
     errorTooltip: boolean;
 }
 
-type StateKeys = keyof State;
+type StateKeys = keyof BaseState;
 
 // Placeholder type until ClientError is exported from redux.
 // TODO: remove ClientErrorPlaceholder and change the return type of updateConfig
@@ -34,7 +37,8 @@ type ClientErrorPlaceholder = {
     server_error_id: string;
 }
 
-export default abstract class AdminSettings extends React.Component<Props, State> {
+export default abstract class AdminSettings <Props extends BaseProps, State extends BaseState> extends React.Component<Props, State> {
+    private errorMessageRef: React.RefObject<HTMLDivElement>;
     public constructor(props: Props) {
         super(props);
         const stateInit = {
@@ -44,21 +48,22 @@ export default abstract class AdminSettings extends React.Component<Props, State
             errorTooltip: false,
         };
         if (props.config) {
-            this.state = Object.assign(this.getStateFromConfig(props.config), stateInit);
+            this.state = Object.assign(this.getStateFromConfig(props.config), stateInit) as Readonly<State>;
         } else {
-            this.state = stateInit;
+            this.state = stateInit as Readonly<State>;
         }
+        this.errorMessageRef = React.createRef();
     }
 
-    protected abstract getStateFromConfig(config: object): State;
+    protected abstract getStateFromConfig(config: DeepPartial<AdminConfig>): Partial<State>;
 
-    protected abstract getConfigFromState(config: object): object;
+    protected abstract getConfigFromState(config: DeepPartial<AdminConfig>): unknown;
 
     protected abstract renderTitle(): React.ReactElement;
 
     protected abstract renderSettings(): React.ReactElement;
 
-    protected handleSaved?: ((config: object) => React.ReactElement);
+    protected handleSaved?: ((config: AdminConfig) => React.ReactElement);
 
     protected canSave?: () => boolean;
 
@@ -74,7 +79,7 @@ export default abstract class AdminSettings extends React.Component<Props, State
         }
     }
 
-    private handleChange = (id: StateKeys, value: any) => {
+    protected handleChange = (id: string, value: boolean) => {
         this.setState((prevState) => ({
             ...prevState,
             saveNeeded: true,
@@ -92,7 +97,7 @@ export default abstract class AdminSettings extends React.Component<Props, State
         this.doSubmit();
     }
 
-    private doSubmit = async (callback?: () => void) => {
+    protected doSubmit = async (callback?: () => void) => {
         this.setState({
             saving: true,
             serverError: null,
@@ -106,7 +111,7 @@ export default abstract class AdminSettings extends React.Component<Props, State
             const {data, error} = await this.props.updateConfig(config);
 
             if (data) {
-                this.setState(this.getStateFromConfig(data));
+                this.setState(this.getStateFromConfig(data) as State);
 
                 this.setState({
                     saveNeeded: false,
@@ -168,7 +173,20 @@ export default abstract class AdminSettings extends React.Component<Props, State
         return n;
     };
 
-    private parseIntNonZero = (str: string, defaultValue?: number, minimumValue = 1) => {
+    private parseIntZeroOrMin = (str: string, minimumValue = 1) => {
+        const n = parseInt(str, 10);
+
+        if (isNaN(n) || n < 0) {
+            return 0;
+        }
+        if (n > 0 && n < minimumValue) {
+            return minimumValue;
+        }
+
+        return n;
+    };
+
+    protected parseIntNonZero = (str: string, defaultValue?: number, minimumValue = 1) => {
         const n = parseInt(str, 10);
 
         if (isNaN(n) || n < minimumValue) {
@@ -181,19 +199,23 @@ export default abstract class AdminSettings extends React.Component<Props, State
         return n;
     };
 
-    private getConfigValue(config: object, path: string) {
+    private getConfigValue(config: AdminConfig | EnvironmentConfig, path: string) {
         const pathParts = path.split('.');
 
-        return pathParts.reduce((obj: object|null, pathPart) => {
+        // eslint-disable-next-line @typescript-eslint/ban-types
+        return pathParts.reduce((obj: object | null, pathPart) => {
             if (!obj) {
                 return null;
             }
+            // eslint-disable-next-line @typescript-eslint/ban-types
             return obj[(pathPart as keyof object)];
         }, config);
     }
 
-    private setConfigValue(config: object, path: string, value: any) {
+    private setConfigValue(config: AdminConfig, path: string, value: any) {
+        // eslint-disable-next-line @typescript-eslint/ban-types
         function setValue(obj: object, pathParts: string[]) {
+            // eslint-disable-next-line @typescript-eslint/ban-types
             const part = pathParts[0] as keyof object;
 
             if (pathParts.length === 1) {
@@ -210,8 +232,8 @@ export default abstract class AdminSettings extends React.Component<Props, State
         setValue(config, path.split('.'));
     }
 
-    private isSetByEnv = (path: string) => {
-        return Boolean(this.props.environmentConfig && this.getConfigValue(this.props.environmentConfig, path));
+    protected isSetByEnv = (path: string) => {
+        return Boolean(this.props.environmentConfig && this.getConfigValue(this.props.environmentConfig!, path));
     };
 
     public render() {
@@ -229,13 +251,13 @@ export default abstract class AdminSettings extends React.Component<Props, State
                     <div className='admin-console-save'>
                         <SaveButton
                             saving={this.state.saving}
-                            disabled={!this.state.saveNeeded || (this.canSave && !this.canSave())}
+                            disabled={this.props.isDisabled || !this.state.saveNeeded || (this.canSave && !this.canSave())}
                             onClick={this.handleSubmit}
                             savingMessage={localizeMessage('admin.saving', 'Saving Config...')}
                         />
                         <div
                             className='error-message'
-                            ref='errorMessage'
+                            ref={this.errorMessageRef}
                             onMouseOver={this.openTooltip}
                             onMouseOut={this.closeTooltip}
                         >
@@ -244,7 +266,7 @@ export default abstract class AdminSettings extends React.Component<Props, State
                         <Overlay
                             show={this.state.errorTooltip}
                             placement='top'
-                            target={this.refs.errorMessage}
+                            target={this.errorMessageRef.current as HTMLElement}
                         >
                             <Tooltip id='error-tooltip' >
                                 {this.state.serverError}
@@ -256,3 +278,4 @@ export default abstract class AdminSettings extends React.Component<Props, State
         );
     }
 }
+

@@ -4,18 +4,24 @@
 import $ from 'jquery';
 import PropTypes from 'prop-types';
 import React from 'react';
-import {FormattedHTMLMessage, FormattedMessage} from 'react-intl';
-import {OverlayTrigger, Tooltip} from 'react-bootstrap';
+import {FormattedMessage} from 'react-intl';
+import {Tooltip} from 'react-bootstrap';
 import {Client4} from 'mattermost-redux/client';
 
 import {uploadBrandImage, deleteBrandImage} from 'actions/admin_actions.jsx';
 import {Constants} from 'utils/constants';
 import FormError from 'components/form_error';
+import OverlayTrigger from 'components/overlay_trigger';
 
 const HTTP_STATUS_OK = 200;
 
 export default class BrandImageSetting extends React.PureComponent {
     static propTypes = {
+
+        /*
+         * Set for testing purpose
+         */
+        id: PropTypes.string,
 
         /*
          * Set to disable the setting
@@ -48,6 +54,9 @@ export default class BrandImageSetting extends React.PureComponent {
             brandImageTimestamp: Date.now(),
             error: '',
         };
+
+        this.imageRef = React.createRef();
+        this.fileInputRef = React.createRef();
     }
 
     componentDidMount() {
@@ -58,7 +67,7 @@ export default class BrandImageSetting extends React.PureComponent {
                 } else {
                     this.setState({brandImageExists: false});
                 }
-            }
+            },
         );
 
         this.props.registerSaveAction(this.handleSave);
@@ -69,12 +78,12 @@ export default class BrandImageSetting extends React.PureComponent {
     }
 
     componentDidUpdate() {
-        if (this.refs.image) {
+        if (this.imageRef.current) {
             const reader = new FileReader();
 
-            const img = this.refs.image;
+            const img = this.imageRef.current;
             reader.onload = (e) => {
-                $(img).attr('src', e.target.result);
+                $(img).attr('src', e.target.result); // eslint-disable-line jquery/no-attr
             };
 
             reader.readAsDataURL(this.state.brandImage);
@@ -82,7 +91,7 @@ export default class BrandImageSetting extends React.PureComponent {
     }
 
     handleImageChange = () => {
-        const element = $(this.refs.fileInput);
+        const element = $(this.fileInputRef.current);
         if (element.prop('files').length > 0) {
             this.props.setSaveNeeded();
             this.setState({
@@ -117,7 +126,7 @@ export default class BrandImageSetting extends React.PureComponent {
                     this.setState({
                         error: err.message,
                     });
-                }
+                },
             );
         } else if (this.state.brandImage) {
             await uploadBrandImage(
@@ -134,7 +143,7 @@ export default class BrandImageSetting extends React.PureComponent {
                     this.setState({
                         error: err.message,
                     });
-                }
+                },
             );
         }
         return {error};
@@ -149,9 +158,9 @@ export default class BrandImageSetting extends React.PureComponent {
         let img = null;
         if (this.state.brandImage) {
             img = (
-                <div className='remove-image__img margin-bottom x3'>
+                <div className='remove-image__img mb-5'>
                     <img
-                        ref='image'
+                        ref={this.imageRef}
                         alt='brand image'
                         src=''
                     />
@@ -176,6 +185,7 @@ export default class BrandImageSetting extends React.PureComponent {
                         )}
                     >
                         <button
+                            type='button'
                             className='remove-image__btn'
                             onClick={this.handleDeleteButtonPressed}
                         >
@@ -185,7 +195,7 @@ export default class BrandImageSetting extends React.PureComponent {
                 );
             }
             img = (
-                <div className='remove-image__img margin-bottom x3'>
+                <div className='remove-image__img mb-5'>
                     <img
                         alt='brand image'
                         src={Client4.getBrandImageUrl(this.state.brandImageTimestamp)}
@@ -195,7 +205,7 @@ export default class BrandImageSetting extends React.PureComponent {
             );
         } else {
             img = (
-                <p className='margin-top'>
+                <p className='mt-2'>
                     <FormattedMessage
                         id='admin.team.noBrandImage'
                         defaultMessage='No brand image uploaded'
@@ -205,7 +215,10 @@ export default class BrandImageSetting extends React.PureComponent {
         }
 
         return (
-            <div className='form-group'>
+            <div
+                data-testid={this.props.id}
+                className='form-group'
+            >
                 <label className='control-label col-sm-4'>
                     <FormattedMessage
                         id='admin.team.brandImageTitle'
@@ -219,8 +232,9 @@ export default class BrandImageSetting extends React.PureComponent {
                 </div>
                 <div className='col-sm-4'/>
                 <div className='col-sm-8'>
-                    <div className='file__upload margin-top x3'>
+                    <div className='file__upload mt-5'>
                         <button
+                            type='button'
                             className={letbtnDefaultClass}
                             disabled={this.props.disabled}
                         >
@@ -230,7 +244,7 @@ export default class BrandImageSetting extends React.PureComponent {
                             />
                         </button>
                         <input
-                            ref='fileInput'
+                            ref={this.fileInputRef}
                             type='file'
                             accept='.jpg,.png,.bmp'
                             disabled={this.props.disabled}
@@ -239,10 +253,10 @@ export default class BrandImageSetting extends React.PureComponent {
                     </div>
                     <br/>
                     <FormError error={this.state.error}/>
-                    <p className='help-text no-margin'>
-                        <FormattedHTMLMessage
+                    <p className='help-text m-0'>
+                        <FormattedMessage
                             id='admin.team.uploadDesc'
-                            defaultMessage='Customize your user experience by adding a custom image to your login screen. See examples at <a href="http://docs.mattermost.com/administration/config-settings.html#custom-branding" target="_blank">docs.mattermost.com/administration/config-settings.html#custom-branding</a>.'
+                            defaultMessage='Customize your user experience by adding a custom image to your login screen. Recommended maximum image size is less than 2 MB.'
                         />
                     </p>
                 </div>

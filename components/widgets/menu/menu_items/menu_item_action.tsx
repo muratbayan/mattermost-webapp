@@ -14,15 +14,24 @@ type Props = {
     buttonClass?: string;
     isDangerous?: boolean;
 }
-export const MenuItemActionImpl = ({onClick, ariaLabel, text, extraText, id, buttonClass, isDangerous}: Props) => (
+export const MenuItemActionImpl = ({
+    onClick,
+    ariaLabel,
+    text,
+    extraText,
+    id,
+    buttonClass,
+    isDangerous,
+}: Props) => (
     <button
+        data-testid={id}
         id={id}
         aria-label={ariaLabel}
-        className={'style--none' + (extraText ? ' MenuItem__help' : '') + (buttonClass ? ' ' + buttonClass : '') + (isDangerous ? ' MenuItem__dangerous' : '')}
+        className={'style--none' + (extraText ? ' MenuItem__with-help' : '') + (buttonClass ? ' ' + buttonClass : '') + (isDangerous ? ' MenuItem__dangerous' : '')}
         onClick={onClick}
     >
-        {text}
-        {extraText && <span className='extra-text'>{extraText}</span>}
+        {text && <span className='MenuItem__primary-text'>{text}</span>}
+        {extraText && <span className='MenuItem__help-text'>{extraText}</span>}
     </button>
 );
 

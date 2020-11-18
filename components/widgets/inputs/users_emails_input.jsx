@@ -3,6 +3,7 @@
 
 import PropTypes from 'prop-types';
 import React from 'react';
+import {FormattedMessage} from 'react-intl';
 import AsyncSelect from 'react-select/lib/AsyncCreatable';
 import {components} from 'react-select';
 import classNames from 'classnames';
@@ -14,22 +15,26 @@ import MailIcon from 'components/widgets/icons/mail_icon';
 import MailPlusIcon from 'components/widgets/icons/mail_plus_icon';
 import CloseCircleSolidIcon from 'components/widgets/icons/close_circle_solid_icon';
 import GuestBadge from 'components/widgets/badges/guest_badge';
+import BotBadge from 'components/widgets/badges/bot_badge';
 import LoadingSpinner from 'components/widgets/loading/loading_spinner';
 import Avatar from 'components/widgets/users/avatar';
 import {imageURLForUser, getDisplayName, getLongDisplayNameParts} from 'utils/utils.jsx';
 
 import {t} from 'utils/i18n.jsx';
-import {intlShape} from 'utils/react_intl';
 import {isGuest} from 'utils/utils';
 
 import './users_emails_input.scss';
 
-export default class UsersEmailsInput extends React.Component {
+export default class UsersEmailsInput extends React.PureComponent {
     static propTypes = {
         placeholder: PropTypes.string,
         ariaLabel: PropTypes.string.isRequired,
         usersLoader: PropTypes.func,
         onChange: PropTypes.func,
+        showError: PropTypes.bool,
+        errorMessageId: PropTypes.string,
+        errorMessageDefault: PropTypes.string,
+        errorMessageValues: PropTypes.object,
         value: PropTypes.arrayOf(PropTypes.oneOfType([PropTypes.object, PropTypes.string])),
         onInputChange: PropTypes.func,
         inputValue: PropTypes.string,
@@ -39,11 +44,8 @@ export default class UsersEmailsInput extends React.Component {
         validAddressMessageDefault: PropTypes.string,
         loadingMessageId: PropTypes.string,
         loadingMessageDefault: PropTypes.string,
+        emailInvitationsEnabled: PropTypes.bool,
     }
-
-    static contextTypes = {
-        intl: intlShape.isRequired,
-    };
 
     static defaultProps = {
         noMatchMessageId: t('widgets.users_emails_input.no_user_found_matching'),
@@ -52,6 +54,7 @@ export default class UsersEmailsInput extends React.Component {
         validAddressMessageDefault: 'Add **{email}**',
         loadingMessageId: t('widgets.users_emails_input.loading'),
         loadingMessageDefault: 'Loading',
+        showError: false,
     };
 
     constructor(props) {
@@ -83,13 +86,12 @@ export default class UsersEmailsInput extends React.Component {
     }
 
     loadingMessage = () => {
-        let text = 'Loading';
-        if (this.context.intl) {
-            text = this.context.intl.formatMessage({
-                id: this.props.loadingMessageId,
-                defaultMessage: this.props.loadingMessageDefault,
-            });
-        }
+        const text = (
+            <FormattedMessage
+                id={this.props.loadingMessageId}
+                defaultMessage={this.props.loadingMessageDefault}
+            />
+        );
 
         return (<LoadingSpinner text={text}/>);
     }
@@ -99,8 +101,14 @@ export default class UsersEmailsInput extends React.Component {
     }
 
     formatOptionLabel = (user, options) => {
-        const profileImg = imageURLForUser(user);
+        const profileImg = imageURLForUser(user.id, user.last_picture_update);
         let guestBadge = null;
+        let botBadge = null;
+
+        if (user.is_bot) {
+            botBadge = <BotBadge/>;
+        }
+
         if (!isEmail(user.value) && isGuest(user)) {
             guestBadge = <GuestBadge/>;
         }
@@ -117,6 +125,7 @@ export default class UsersEmailsInput extends React.Component {
                         url={profileImg}
                     />
                     {this.renderUserName(user)}
+                    {botBadge}
                     {guestBadge}
                 </React.Fragment>
             );
@@ -139,6 +148,7 @@ export default class UsersEmailsInput extends React.Component {
                     url={profileImg}
                 />
                 {getDisplayName(user)}
+                {botBadge}
                 {guestBadge}
             </React.Fragment>
         );
@@ -163,6 +173,7 @@ export default class UsersEmailsInput extends React.Component {
                 id={this.props.validAddressMessageId}
                 defaultMessage={this.props.validAddressMessageDefault}
                 values={{email: value}}
+                disableLinks={true}
             />
         </React.Fragment>
     );
@@ -172,12 +183,14 @@ export default class UsersEmailsInput extends React.Component {
         if (!inputValue) {
             return null;
         }
+
         return (
             <div className='users-emails-input__option users-emails-input__option--no-matches'>
                 <FormattedMarkdownMessage
                     id={this.props.noMatchMessageId}
                     defaultMessage={this.props.noMatchMessageDefault}
                     values={{text: inputValue}}
+                    disableLinks={true}
                 >
                     {(message) => (
                         <components.NoOptionsMessage {...props}>
@@ -202,7 +215,7 @@ export default class UsersEmailsInput extends React.Component {
     };
 
     handleInputChange = (inputValue, action) => {
-        if (action.action === 'input-blur') {
+        if (action.action === 'input-blur' && inputValue !== '') {
             const values = this.props.value.map((v) => {
                 if (v.id) {
                     return v;
@@ -222,7 +235,7 @@ export default class UsersEmailsInput extends React.Component {
                 }
             }
 
-            if (isEmail(this.props.inputValue)) {
+            if (this.props.emailInvitationsEnabled && isEmail(this.props.inputValue)) {
                 const email = this.props.inputValue;
                 this.onChange([...values, {value: email, label: email}]);
                 this.props.onInputChange('');
@@ -245,11 +258,15 @@ export default class UsersEmailsInput extends React.Component {
     }
 
     showAddEmail = (input, values, options) => {
-        return options.length === 0 && isEmail(input);
+        return this.props.emailInvitationsEnabled && options.length === 0 && isEmail(input);
     }
 
     onFocus = () => {
         this.selectRef.current.handleInputChange(this.props.inputValue, {action: 'custom'});
+    }
+
+    onBlur = () => {
+        this.selectRef.current.handleInputChange(this.props.inputValue, {action: 'input-blur'});
     }
 
     render() {
@@ -260,32 +277,55 @@ export default class UsersEmailsInput extends React.Component {
             return {label: v, value: v};
         });
         return (
-            <AsyncSelect
-                ref={this.selectRef}
-                styles={this.customStyles}
-                onChange={this.onChange}
-                loadOptions={this.optionsLoader}
-                isValidNewOption={this.showAddEmail}
-                isMulti={true}
-                isClearable={false}
-                className={classNames('UsersEmailsInput', {empty: this.props.inputValue === ''})}
-                classNamePrefix='users-emails-input'
-                placeholder={this.props.placeholder}
-                components={this.components}
-                getOptionValue={this.getOptionValue}
-                formatOptionLabel={this.formatOptionLabel}
-                defaultOptions={false}
-                defaultMenuIsOpen={false}
-                openMenuOnClick={false}
-                loadingMessage={this.loadingMessage}
-                onInputChange={this.handleInputChange}
-                inputValue={this.props.inputValue}
-                openMenuOnFocus={true}
-                onFocus={this.onFocus}
-                tabSelectsValue={true}
-                value={values}
-                aria-label={this.props.ariaLabel}
-            />
+            <>
+                <AsyncSelect
+                    ref={this.selectRef}
+                    styles={this.customStyles}
+                    onChange={this.onChange}
+                    loadOptions={this.optionsLoader}
+                    isValidNewOption={this.showAddEmail}
+                    isMulti={true}
+                    isClearable={false}
+                    className={classNames(
+                        'UsersEmailsInput',
+                        this.props.showError ? 'error' : '',
+                        {empty: this.props.inputValue === ''},
+                    )}
+                    classNamePrefix='users-emails-input'
+                    placeholder={this.props.placeholder}
+                    components={this.components}
+                    getOptionValue={this.getOptionValue}
+                    formatOptionLabel={this.formatOptionLabel}
+                    defaultOptions={false}
+                    defaultMenuIsOpen={false}
+                    openMenuOnClick={false}
+                    loadingMessage={this.loadingMessage}
+                    onInputChange={this.handleInputChange}
+                    inputValue={this.props.inputValue}
+                    openMenuOnFocus={true}
+                    onFocus={this.onFocus}
+                    onBlur={this.onBlur}
+                    tabSelectsValue={true}
+                    value={values}
+                    aria-label={this.props.ariaLabel}
+                />
+                {this.props.showError && (
+                    <div className='InputErrorBox'>
+                        <FormattedMarkdownMessage
+                            id={this.props.errorMessageId}
+                            defaultMessage={this.props.errorMessageDefault}
+                            values={this.props.errorMessageValues || null}
+                            disableLinks={true}
+                        >
+                            {(message) => (
+                                <components.NoOptionsMessage>
+                                    {message}
+                                </components.NoOptionsMessage>
+                            )}
+                        </FormattedMarkdownMessage>
+                    </div>
+                )}
+            </>
         );
     }
 }

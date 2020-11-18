@@ -1,14 +1,16 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
+/* eslint-disable react/no-string-refs */
 
 import PropTypes from 'prop-types';
 import React from 'react';
-import {FormattedMessage} from 'react-intl';
-import {OverlayTrigger, Tooltip} from 'react-bootstrap';
+import {FormattedMessage, injectIntl} from 'react-intl';
+import {Tooltip} from 'react-bootstrap';
 import {Posts} from 'mattermost-redux/constants/index';
 import {
     isPostEphemeral,
     isPostPendingOrFailed,
+    isMeMessage as checkIsMeMessage,
 } from 'mattermost-redux/utils/post_utils';
 
 import Constants, {Locations, A11yCustomEventTypes} from 'utils/constants';
@@ -17,6 +19,7 @@ import {intlShape} from 'utils/react_intl';
 import {isMobile} from 'utils/utils.jsx';
 import DotMenu from 'components/dot_menu';
 import FileAttachmentListContainer from 'components/file_attachment_list';
+import OverlayTrigger from 'components/overlay_trigger';
 import PostProfilePicture from 'components/post_profile_picture';
 import FailedPostOptions from 'components/post_view/failed_post_options';
 import PostFlagIcon from 'components/post_view/post_flag_icon';
@@ -27,10 +30,10 @@ import MessageWithAdditionalContent from 'components/message_with_additional_con
 import BotBadge from 'components/widgets/badges/bot_badge';
 import Badge from 'components/widgets/badges/badge';
 import InfoSmallIcon from 'components/widgets/icons/info_small_icon';
-
+import PostPreHeader from 'components/post_view/post_pre_header';
 import UserProfile from 'components/user_profile';
 
-export default class RhsComment extends React.PureComponent {
+class RhsComment extends React.PureComponent {
     static propTypes = {
         post: PropTypes.object,
         teamId: PropTypes.string.isRequired,
@@ -38,7 +41,7 @@ export default class RhsComment extends React.PureComponent {
         compactDisplay: PropTypes.bool,
         author: PropTypes.string,
         reactions: PropTypes.object,
-        isFlagged: PropTypes.bool,
+        isFlagged: PropTypes.bool.isRequired,
         isBusy: PropTypes.bool,
         removePost: PropTypes.func.isRequired,
         previewCollapsed: PropTypes.string.isRequired,
@@ -52,19 +55,38 @@ export default class RhsComment extends React.PureComponent {
         isConsecutivePost: PropTypes.bool,
         handleCardClick: PropTypes.func,
         a11yIndex: PropTypes.number,
+
+        /**
+         * If the user that made the post is a bot.
+         */
+        isBot: PropTypes.bool.isRequired,
+
+        /**
+         * To Check if the current post is last in the list of RHS
+         */
+        isLastPost: PropTypes.bool,
+
+        /**
+         * To check if the state of emoji for last message and from where it was emitted
+         */
+        shortcutReactToLastPostEmittedFrom: PropTypes.string,
+        intl: intlShape.isRequired,
         actions: PropTypes.shape({
             markPostAsUnread: PropTypes.func.isRequired,
-        }),
-    };
 
-    static contextTypes = {
-        intl: intlShape.isRequired,
+            /**
+             * Function to set or unset emoji picker for last message
+             */
+            emitShortcutReactToLastPostFrom: PropTypes.func,
+        }),
+        emojiMap: PropTypes.object.isRequired,
     };
 
     constructor(props) {
         super(props);
 
         this.postRef = React.createRef();
+        this.dotMenuRef = React.createRef();
 
         this.state = {
             showEmojiPicker: false,
@@ -74,6 +96,8 @@ export default class RhsComment extends React.PureComponent {
             a11yActive: false,
             currentAriaLabel: '',
         };
+
+        this.postHeaderRef = React.createRef();
     }
 
     componentDidMount() {
@@ -85,6 +109,7 @@ export default class RhsComment extends React.PureComponent {
             this.postRef.current.addEventListener(A11yCustomEventTypes.DEACTIVATE, this.handleA11yDeactivateEvent);
         }
     }
+
     componentWillUnmount() {
         document.removeEventListener('keydown', this.handleAlt);
         document.removeEventListener('keyup', this.handleAlt);
@@ -95,9 +120,47 @@ export default class RhsComment extends React.PureComponent {
         }
     }
 
-    componentDidUpdate() {
+    componentDidUpdate(prevProps) {
+        const {shortcutReactToLastPostEmittedFrom, isLastPost} = this.props;
+
         if (this.state.a11yActive) {
             this.postRef.current.dispatchEvent(new Event(A11yCustomEventTypes.UPDATE));
+        }
+
+        const shortcutReactToLastPostEmittedFromRHS = prevProps.shortcutReactToLastPostEmittedFrom !== shortcutReactToLastPostEmittedFrom &&
+        shortcutReactToLastPostEmittedFrom === Locations.RHS_ROOT;
+        if (shortcutReactToLastPostEmittedFromRHS) {
+            // Opening the emoji picker when more than one post in rhs is present
+            this.handleShortcutReactToLastPost(isLastPost);
+        }
+    }
+
+    handleShortcutReactToLastPost = (isLastPost) => {
+        if (isLastPost) {
+            const {isReadOnly, channelIsArchived, enableEmojiPicker, post,
+                actions: {emitShortcutReactToLastPostFrom}} = this.props;
+
+            // Setting the last message emoji action to empty to clean up the redux state
+            emitShortcutReactToLastPostFrom(Locations.NO_WHERE);
+
+            // Following are the types of posts on which adding reaction is not possible
+            const isDeletedPost = post && post.state === Posts.POST_DELETED;
+            const isEphemeralPost = post && isPostEphemeral(post);
+            const isSystemMessage = post && PostUtils.isSystemMessage(post);
+            const isAutoRespondersPost = post && PostUtils.fromAutoResponder(post);
+            const isFailedPost = post && post.failed;
+
+            // Checking if rhs comment is in scroll view of the user
+            const boundingRectOfPostInfo = this.postHeaderRef.current.getBoundingClientRect();
+            const isPostHeaderVisibleToUser = (boundingRectOfPostInfo.top - 110) > 0 &&
+                boundingRectOfPostInfo.bottom < (window.innerHeight);
+
+            if (isPostHeaderVisibleToUser && !isEphemeralPost && !isSystemMessage && !isReadOnly && !isFailedPost &&
+                !isAutoRespondersPost && !isDeletedPost && !channelIsArchived && !isMobile() && enableEmojiPicker) {
+                this.setState({hover: true}, () => {
+                    this.toggleEmojiPicker();
+                });
+            }
         }
     }
 
@@ -140,23 +203,19 @@ export default class RhsComment extends React.PureComponent {
         });
     };
 
-    getClassName = (post, isSystemMessage) => {
+    getClassName = (post, isSystemMessage, isMeMessage) => {
         let className = 'post post--thread same--root post--comment';
 
         if (this.props.currentUserId === post.user_id) {
             className += ' current--user';
         }
 
-        if (isSystemMessage) {
+        if (isSystemMessage || isMeMessage) {
             className += ' post--system';
         }
 
         if (this.props.compactDisplay) {
             className += ' post--compact';
-        }
-
-        if (post.is_pinned) {
-            className += ' post--pinned';
         }
 
         if (this.state.dropdownOpened || this.state.showEmojiPicker) {
@@ -167,7 +226,7 @@ export default class RhsComment extends React.PureComponent {
             className += ' same--user';
         }
 
-        if (this.state.alt) {
+        if (this.state.alt && !this.props.channelIsArchived) {
             className += ' cursor--pointer';
         }
 
@@ -175,7 +234,9 @@ export default class RhsComment extends React.PureComponent {
     };
 
     handleAlt = (e) => {
-        this.setState({alt: e.altKey});
+        if (this.state.alt !== e.altKey) {
+            this.setState({alt: e.altKey});
+        }
     }
 
     handleDropdownOpened = (isOpened) => {
@@ -185,7 +246,7 @@ export default class RhsComment extends React.PureComponent {
     };
 
     getDotMenuRef = () => {
-        return this.refs.dotMenu;
+        return this.dotMenuRef.current;
     };
 
     setHover = () => {
@@ -205,14 +266,18 @@ export default class RhsComment extends React.PureComponent {
     }
 
     handlePostClick = (e) => {
+        if (this.props.channelIsArchived) {
+            return;
+        }
+
         if (e.altKey) {
             this.props.actions.markPostAsUnread(this.props.post);
         }
     }
 
     handlePostFocus = () => {
-        const {post, author, reactions, isFlagged} = this.props;
-        this.setState({currentAriaLabel: PostUtils.createAriaLabelForPost(post, author, isFlagged, reactions, this.context.intl)});
+        const {post, author, reactions, isFlagged, intl, emojiMap} = this.props;
+        this.setState({currentAriaLabel: PostUtils.createAriaLabelForPost(post, author, isFlagged, reactions, intl, emojiMap)});
     }
 
     render() {
@@ -221,6 +286,7 @@ export default class RhsComment extends React.PureComponent {
         const isPostDeleted = post && post.state === Posts.POST_DELETED;
         const isEphemeral = isPostEphemeral(post);
         const isSystemMessage = PostUtils.isSystemMessage(post);
+        const isMeMessage = checkIsMeMessage(post);
         const fromAutoResponder = PostUtils.fromAutoResponder(post);
 
         let botIndicator;
@@ -300,6 +366,22 @@ export default class RhsComment extends React.PureComponent {
                         />
                     </Badge>
                 );
+            } else if (isSystemMessage && this.props.isBot) {
+                userProfile = (
+                    <UserProfile
+                        userId={post.user_id}
+                        hideStatus={true}
+                    />
+                );
+
+                visibleMessage = (
+                    <span className='post__visibility'>
+                        <FormattedMessage
+                            id='post_info.message.visible'
+                            defaultMessage='(Only visible to you)'
+                        />
+                    </span>
+                );
             } else if (isSystemMessage) {
                 userProfile = (
                     <UserProfile
@@ -313,7 +395,6 @@ export default class RhsComment extends React.PureComponent {
                         disablePopover={true}
                     />
                 );
-
                 visibleMessage = (
                     <span className='post__visibility'>
                         <FormattedMessage
@@ -362,6 +443,17 @@ export default class RhsComment extends React.PureComponent {
             );
         }
 
+        let flagIcon = null;
+        if (!isMobile() && (!isEphemeral && !post.failed && !isSystemMessage)) {
+            flagIcon = (
+                <PostFlagIcon
+                    location={Locations.RHS_COMMENT}
+                    postId={post.id}
+                    isFlagged={this.props.isFlagged}
+                />
+            );
+        }
+
         let options;
         if (isEphemeral) {
             options = (
@@ -380,44 +472,23 @@ export default class RhsComment extends React.PureComponent {
                     handleDropdownOpened={this.handleDropdownOpened}
                     handleAddReactionClick={this.toggleEmojiPicker}
                     isReadOnly={isReadOnly || channelIsArchived}
+                    isMenuOpen={this.state.dropdownOpened}
                     enableEmojiPicker={this.props.enableEmojiPicker}
                 />
             );
 
             options = (
                 <div
-                    ref='dotMenu'
-                    className='col col__reply'
+                    ref={this.dotMenuRef}
+                    className='col post-menu'
                 >
                     {dotMenu}
                     {postReaction}
+                    {flagIcon}
                 </div>
             );
         }
 
-        let pinnedBadge;
-        if (post.is_pinned) {
-            pinnedBadge = (
-                <span className='post__pinned-badge'>
-                    <FormattedMessage
-                        id='post_info.pinned'
-                        defaultMessage='Pinned'
-                    />
-                </span>
-            );
-        }
-
-        let flagIcon = null;
-        if (this.state.hover || this.state.a11yActive || this.state.dropdownOpened || this.state.showEmojiPicker || this.props.isFlagged) {
-            flagIcon = (
-                <PostFlagIcon
-                    location={Locations.RHS_COMMENT}
-                    postId={post.id}
-                    isFlagged={this.props.isFlagged}
-                    isEphemeral={isEphemeral}
-                />
-            );
-        }
         const postTime = this.renderPostTime();
 
         let postInfoIcon;
@@ -457,7 +528,7 @@ export default class RhsComment extends React.PureComponent {
                 ref={this.postRef}
                 id={'rhsPost_' + post.id}
                 tabIndex='-1'
-                className={`a11y__section ${this.getClassName(post, isSystemMessage)}`}
+                className={`a11y__section ${this.getClassName(post, isSystemMessage, isMeMessage)}`}
                 onClick={this.handlePostClick}
                 onMouseOver={this.setHover}
                 onMouseLeave={this.unsetHover}
@@ -465,6 +536,11 @@ export default class RhsComment extends React.PureComponent {
                 onFocus={this.handlePostFocus}
                 data-a11y-sort-order={this.props.a11yIndex}
             >
+                <PostPreHeader
+                    isFlagged={this.props.isFlagged}
+                    isPinned={post.is_pinned}
+                    channelId={post.channel_id}
+                />
                 <div
                     role='application'
                     className='post__content'
@@ -473,16 +549,17 @@ export default class RhsComment extends React.PureComponent {
                         {profilePicture}
                     </div>
                     <div>
-                        <div className='post__header'>
+                        <div
+                            className='post__header'
+                            ref={this.postHeaderRef}
+                        >
                             <div className='col col__name'>
                                 {userProfile}
                                 {botIndicator}
                             </div>
                             <div className='col'>
                                 {postTime}
-                                {pinnedBadge}
                                 {postInfoIcon}
-                                {flagIcon}
                                 {visibleMessage}
                             </div>
                             {options}
@@ -510,3 +587,6 @@ export default class RhsComment extends React.PureComponent {
         );
     }
 }
+
+export default injectIntl(RhsComment);
+/* eslint-enable react/no-string-refs */
